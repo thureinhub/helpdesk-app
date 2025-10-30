@@ -1,0 +1,28 @@
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Dependency directories
+# (This will catch node_modules in the root, /frontend, and /backend)
+**/node_modules
+
+# Environment variables
+# (This is crucial for security!)
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# React build output
+/frontend/build
+
+# Node.js/Express build output (if using TypeScript)
+/backend/dist
+
+# IDE/Editor folders
+.vscode/
+.idea/
