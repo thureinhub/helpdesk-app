@@ -689,6 +689,7 @@ function TicketDetail({ ticket, users, currentUser, onClose, onUpdate, onAddComm
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
                   className="w-full border rounded-md px-3 py-2"
+                  disabled={currentUser.role === 'user'}
                 >
                   <option value="Open">Open</option>
                   <option value="In Progress">In Progress</option>
@@ -696,19 +697,38 @@ function TicketDetail({ ticket, users, currentUser, onClose, onUpdate, onAddComm
                   <option value="Closed">Closed</option>
                 </select>
               </div>
+              {(currentUser.role === 'admin' || currentUser.role === 'support') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Assign To</label>
+                  <select
+                    value={assignedTo}
+                    onChange={(e) => setAssignedTo(e.target.value)}
+                    className="w-full border rounded-md px-3 py-2"
+                  >
+                    <option value="">Unassigned</option>
+                    {users.map(user => (
+                      <option key={user.id} value={user.id}>{user.full_name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {!canEdit && (
+            <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Assign To</label>
-                <select
-                  value={assignedTo}
-                  onChange={(e) => setAssignedTo(e.target.value)}
-                  className="w-full border rounded-md px-3 py-2"
-                >
-                  <option value="">Unassigned</option>
-                  {users.map(user => (
-                    <option key={user.id} value={user.id}>{user.full_name}</option>
-                  ))}
-                </select>
+                <p className="text-sm text-gray-600">Status</p>
+                <span className={`inline-block mt-1 px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(ticket.status)}`}>
+                  {ticket.status}
+                </span>
               </div>
+              {ticket.assignee_name && (
+                <div>
+                  <p className="text-sm text-gray-600">Assigned To</p>
+                  <p className="font-medium mt-1">{ticket.assignee_name}</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -717,20 +737,131 @@ function TicketDetail({ ticket, users, currentUser, onClose, onUpdate, onAddComm
             <p className="text-gray-700 whitespace-pre-wrap bg-gray-50 p-4 rounded">{ticket.description}</p>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div>
-              <p className="text-sm text-gray-600">Priority</p>
-              <span className={`inline-block mt-1 px-2 py-1 text-xs font-semibold rounded-full ${getPriorityColor(ticket.priority)}`}>
-                {ticket.priority}
-              </span>
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-600">Priority</p>
+                <span className={`inline-block mt-1 px-2 py-1 text-xs font-semibold rounded-full ${getPriorityColor(ticket.priority)}`}>
+                  {ticket.priority}
+                </span>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Category</p>
+                <p className="font-medium mt-1">{ticket.category}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Created By</p>
+                <p className="font-medium mt-1">{ticket.creator_name}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Assigned To</p>
+                <p className="font-medium mt-1">
+                  {ticket.assignee_name ? (
+                    <span className="text-blue-600">{ticket.assignee_name}</span>
+                  ) : (
+                    <span className="text-gray-400 italic">Unassigned</span>
+                  )}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Category</p>
-              <p className="font-medium mt-1">{ticket.category}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Created By</p>
-              <p className="font-medium mt-1">{ticket.creator_name}</p>
+            
+            <div className="space-y-3 bg-blue-50 p-4 rounded-lg">
+              <h4 className="font-semibold text-sm text-blue-900 mb-3">Ticket Timeline</h4>
+              
+              {/* Created At - Always shows */}
+              <div className="flex items-start">
+                <div className="flex-shrink-0 w-2 h-2 mt-1.5 rounded-full bg-green-500"></div>
+                <div className="ml-3 flex-1">
+                  <p className="text-xs font-medium text-gray-700">Created At</p>
+                  <p className="text-sm font-semibold mt-0.5">
+                    {new Date(ticket.created_at).toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Assigned At */}
+              <div className="flex items-start">
+                <div className={`flex-shrink-0 w-2 h-2 mt-1.5 rounded-full ${ticket.assigned_to ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+                <div className="ml-3 flex-1">
+                  <p className="text-xs font-medium text-gray-700">Assigned At</p>
+                  {ticket.assigned_to ? (
+                    <>
+                      <p className="text-sm font-semibold mt-0.5">
+                        {new Date(ticket.updated_at).toLocaleString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                      <p className="text-xs text-gray-600 mt-0.5">to {ticket.assignee_name}</p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-400 italic mt-0.5">Not assigned yet</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Resolved At */}
+              <div className="flex items-start">
+                <div className={`flex-shrink-0 w-2 h-2 mt-1.5 rounded-full ${ticket.resolved_at && ticket.status === 'Resolved' ? 'bg-purple-500' : 'bg-gray-300'}`}></div>
+                <div className="ml-3 flex-1">
+                  <p className="text-xs font-medium text-gray-700">Resolved At</p>
+                  {ticket.resolved_at && ticket.status === 'Resolved' ? (
+                    <p className="text-sm font-semibold mt-0.5">
+                      {new Date(ticket.resolved_at).toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  ) : ticket.status === 'Closed' && ticket.resolved_at ? (
+                    <p className="text-sm font-semibold mt-0.5">
+                      {new Date(ticket.resolved_at).toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-gray-400 italic mt-0.5">
+                      {ticket.status === 'Open' ? 'Not started yet' : 'In progress...'}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Closed At */}
+              <div className="flex items-start">
+                <div className={`flex-shrink-0 w-2 h-2 mt-1.5 rounded-full ${ticket.status === 'Closed' && ticket.resolved_at ? 'bg-red-500' : 'bg-gray-300'}`}></div>
+                <div className="ml-3 flex-1">
+                  <p className="text-xs font-medium text-gray-700">Closed At</p>
+                  {ticket.status === 'Closed' && ticket.resolved_at ? (
+                    <p className="text-sm font-semibold mt-0.5">
+                      {new Date(ticket.resolved_at).toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-gray-400 italic mt-0.5">Not closed yet</p>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -795,7 +926,7 @@ function TicketDetail({ ticket, users, currentUser, onClose, onUpdate, onAddComm
           </div>
 
           <div className="flex space-x-4 border-t pt-4">
-            {canEdit && (
+            {(currentUser.role === 'admin' || currentUser.role === 'support') && (
               <button
                 onClick={handleUpdate}
                 className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700"
