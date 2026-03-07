@@ -26,3 +26,7 @@ Thumbs.db
 # IDE/Editor folders
 .vscode/
 .idea/
+
+# Ignore uploads directory
+/backend/uploads/
+/backend/tempDbScript.js
