@@ -233,7 +233,7 @@ app.get('/api/users', authenticateToken, async (req, res) => {
     let query = "SELECT id, username, email, full_name, department, role, avatar_url, organization_id, is_locked, is_active FROM users WHERE email != 'thurein.win@sealiongroup.com'";
     const params = [];
 
-    if (req.user.role === 'support' || (req.user.role === 'admin' && req.user.organization_id)) {
+    if (req.user.role === 'support') {
       query += " AND organization_id = $1";
       params.push(req.user.organization_id);
     }
@@ -251,8 +251,8 @@ app.get('/api/users', authenticateToken, async (req, res) => {
 app.post('/api/users', authenticateToken, authorizeRole('admin'), async (req, res) => {
   const { username, email, full_name, department, password, role, organization_id } = req.body;
 
-  // If the admin creating this user has an organization_id, enforce it (Local Admin)
-  const finalOrgId = req.user.organization_id ? req.user.organization_id : (organization_id || null);
+  // Admins always have the ability to set organization_id
+  const finalOrgId = organization_id || null;
 
   try {
     const hashedPassword = await hashPassword(password || 'Welcome123!');
@@ -272,8 +272,8 @@ app.put('/api/users/:id', authenticateToken, authorizeRole('admin'), async (req,
   const userId = req.params.id;
   const { username, email, full_name, department, role, organization_id, is_locked, is_active } = req.body;
 
-  // Local Admins cannot change a user's organization
-  const finalOrgId = req.user.organization_id ? req.user.organization_id : (organization_id || null);
+  // Admins always have the ability to set organization_id
+  const finalOrgId = organization_id || null;
 
   try {
     const targetUser = await pool.query('SELECT email FROM users WHERE id = $1', [userId]);
@@ -425,8 +425,8 @@ app.get('/api/tickets', authenticateToken, async (req, res) => {
       query += ` AND (t.created_by = $${paramCount} OR t.assigned_to = $${paramCount})`;
       params.push(req.user.id);
       paramCount++;
-    } else if (req.user.role === 'support' || (req.user.role === 'admin' && req.user.organization_id)) {
-      // Local Admins and Support staff can only see tickets from their own organization
+    } else if (req.user.role === 'support') {
+      // Support staff can only see tickets from their own organization
       query += ` AND t.organization_id = $${paramCount}`;
       params.push(req.user.organization_id);
       paramCount++;
@@ -604,7 +604,13 @@ app.delete('/api/tickets/:id/attachments/:attachmentId', authenticateToken, asyn
     }
 
     const ticket = ticketResult.rows[0];
-    // Only creator, admin, or support can delete. Users can only delete if they created the ticket.
+    
+    // Admins can delete any.
+    // Users can delete if they created the ticket.
+    // Support cannot delete attachments at all.
+    if (req.user.role === 'support') {
+      return res.status(403).json({ error: 'Access denied. Support staff cannot delete attachments.' });
+    }
     if (req.user.role === 'user' && ticket.created_by !== userId) {
       return res.status(403).json({ error: 'Access denied. You can only manage attachments on tickets you created.' });
     }
@@ -806,7 +812,7 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
     if (req.user.role === 'user') {
       userFilter = `WHERE t.created_by = ${userId} OR t.assigned_to = ${userId}`;
       andUserFilter = `AND (t.created_by = ${userId} OR t.assigned_to = ${userId})`;
-    } else if (req.user.role === 'support' || (req.user.role === 'admin' && req.user.organization_id)) {
+    } else if (req.user.role === 'support') {
       userFilter = `WHERE t.organization_id = ${req.user.organization_id || -1}`;
       andUserFilter = `AND t.organization_id = ${req.user.organization_id || -1}`;
     }

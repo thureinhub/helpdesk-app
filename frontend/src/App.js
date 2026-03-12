@@ -1452,7 +1452,7 @@ function TicketDetail({ ticket, users, currentUser, onClose, onUpdate, onAddComm
 
                     return (
                       <div key={attachment.id} className="border border-gray-200 rounded-lg overflow-hidden group hover:shadow-md transition-shadow relative">
-                        {canEdit && (
+                        {(currentUser.role === 'admin' || (currentUser.role === 'user' && ticket.created_by === currentUser.id)) && (
                           <button
                             onClick={() => handleDeleteAttachment(attachment.id)}
                             className="absolute z-10 top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 shadow-sm hover:bg-red-600 transition"
@@ -1701,7 +1701,7 @@ function UserManagement({ title = "User Management", users, organizations = [], 
   const defaultOrgId = currentUser?.organization_id || '';
   const [formData, setFormData] = useState({ username: '', email: '', full_name: '', department: '', role: defaultRole, organization_id: defaultOrgId });
 
-  const isLocalAdmin = !!currentUser?.organization_id;
+  const isLocalAdmin = false; // Admins always act globally for user management now
 
   const resetForm = () => {
     setFormData({ username: '', email: '', full_name: '', department: '', role: defaultRole, organization_id: defaultOrgId });
