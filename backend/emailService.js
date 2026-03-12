@@ -139,9 +139,44 @@ async function sendCommentNotification(ticket, creator, commenter, comment) {
   }
 }
 
+async function sendAdminStatusEmail(ticket, admins, newStatus) {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.log('📧 [EMAIL DISABLED] Admin Notification for Status Change:', ticket.ticket_number);
+    return true;
+  }
+
+  // Get all admin emails
+  const adminEmails = admins.map(a => a.email).filter(e => e);
+  if (adminEmails.length === 0) return true;
+
+  const mailOptions = {
+    from: process.env.SMTP_USER,
+    to: adminEmails.join(', '), // Send to all admins
+    subject: `Admin Alert: Ticket Update - ${ticket.ticket_number}`,
+    html: `
+      <h2>A ticket status has been updated by IT Support.</h2>
+      <p><strong>Ticket Number:</strong> ${ticket.ticket_number}</p>
+      <p><strong>Title:</strong> ${ticket.title}</p>
+      <p><strong>New Status:</strong> <span style="color: blue; font-weight: bold;">${newStatus}</span></p>
+      <br>
+      <p>Please log in to your helpdesk portal for administrative oversight.</p>
+    `
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log('✅ Admin notification email sent to:', adminEmails.length, 'admins');
+    return true;
+  } catch (error) {
+    console.error('❌ Email send failed:', error.message);
+    return false;
+  }
+}
+
 module.exports = {
   sendTicketCreatedEmail,
   sendTicketAssignedEmail,
   sendTicketStatusEmail,
+  sendAdminStatusEmail,
   sendCommentNotification
 };

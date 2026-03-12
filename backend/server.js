@@ -723,24 +723,61 @@ app.put('/api/tickets/:id', authenticateToken, async (req, res) => {
       [updatedTicket.created_by]
     );
 
-    await client.query('COMMIT');
+    // Get assignee for notifications
+    const assigneeResult = await client.query(
+      'SELECT * FROM users WHERE id = $1',
+      [updatedTicket.assigned_to || oldTicket.assigned_to]
+    );
 
-    // Send email notifications
-    if (status && status !== oldTicket.status && creatorResult.rows[0]) {
-      emailService.sendTicketStatusEmail(updatedTicket, creatorResult.rows[0], status)
-        .catch(err => console.error('Email error:', err));
+    // Insert Database Notifications for Status Change
+    if (status && status !== oldTicket.status) {
+      // Notify Ticket Creator
+      if (creatorResult.rows[0]) {
+        await client.query(
+          'INSERT INTO notifications (user_id, ticket_id, message) VALUES ($1, $2, $3)',
+          [creatorResult.rows[0].id, updatedTicket.id, `Ticket ${updatedTicket.ticket_number} status changed to ${status}`]
+        );
+        // Fallback email
+        emailService.sendTicketStatusEmail(updatedTicket, creatorResult.rows[0], status)
+          .catch(err => console.error('Email error:', err));
+      }
+
+      // Notify Assigned IT Support
+      if (assigneeResult.rows[0] && assigneeResult.rows[0].role === 'support') {
+        await client.query(
+          'INSERT INTO notifications (user_id, ticket_id, message) VALUES ($1, $2, $3)',
+          [assigneeResult.rows[0].id, updatedTicket.id, `Ticket ${updatedTicket.ticket_number} assigned to you changed to ${status}`]
+        );
+      }
+
+      // Notify All Admins
+      const adminsResult = await client.query(
+        "SELECT id, email FROM users WHERE role = 'admin' AND is_active = true"
+      );
+      if (adminsResult.rows.length > 0) {
+        const adminValues = adminsResult.rows.map((admin, index) => `($${index + 2}, $1, $${adminsResult.rows.length + 2})`);
+        
+        const adminIds = adminsResult.rows.map(a => a.id);
+        const queryParams = [updatedTicket.id, ...adminIds, `Ticket ${updatedTicket.ticket_number} status changed to ${status}`];
+
+        await client.query(`INSERT INTO notifications (user_id, ticket_id, message) VALUES ${adminValues.join(', ')}`, queryParams);
+      }
     }
 
     if (assigned_to && assigned_to !== oldTicket.assigned_to) {
-      const assigneeResult = await pool.query(
-        'SELECT * FROM users WHERE id = $1',
-        [assigned_to]
-      );
       if (assigneeResult.rows[0]) {
         emailService.sendTicketAssignedEmail(updatedTicket, assigneeResult.rows[0])
           .catch(err => console.error('Email error:', err));
+        
+        // Also insert a notification for assignment
+        await client.query(
+          'INSERT INTO notifications (user_id, ticket_id, message) VALUES ($1, $2, $3)',
+          [assigneeResult.rows[0].id, updatedTicket.id, `Ticket ${updatedTicket.ticket_number} has been assigned to you`]
+        );
       }
     }
+
+    await client.query('COMMIT');
 
     res.json(updatedTicket);
   } catch (err) {
@@ -896,6 +933,53 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ----------------------------------------------------------------------
+// Notifications API
+// ----------------------------------------------------------------------
+
+// Get user notifications
+app.get('/api/notifications', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
+      [req.user.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Mark notification as read
+app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2 RETURNING *',
+      [req.params.id, req.user.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Mark all notifications as read
+app.put('/api/notifications/read-all', authenticateToken, async (req, res) => {
+  try {
+    await pool.query(
+      'UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false',
+      [req.user.id]
+    );
+    res.json({ message: 'All notifications marked as read' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {

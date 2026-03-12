@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Plus, Search, User, Clock, CheckCircle, XCircle, LogOut, Lock, FileText, Paperclip, ChevronDown, Building, Mail } from 'lucide-react';
+import { AlertCircle, Plus, Search, User, Clock, CheckCircle, XCircle, LogOut, Lock, FileText, Paperclip, ChevronDown, Building, Mail, Bell } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, BarChart, Bar } from 'recharts';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
@@ -127,6 +127,89 @@ function UserProfileDropdown({ user, onLogout, token, onUserUpdate }) {
               <LogOut className="w-4 h-4 mr-3" />
               Sign out
             </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NotificationBell({ notifications, onMarkAsRead, onMarkAllAsRead, onViewTicket }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleNotificationClick = (notification) => {
+    if (!notification.is_read) {
+      onMarkAsRead(notification.id);
+    }
+    setIsOpen(false);
+    onViewTicket(notification.ticket_id);
+  };
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="relative p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-500 rounded-full focus:outline-none transition-colors"
+      >
+        <span className="sr-only">View notifications</span>
+        <Bell className="h-6 w-6" aria-hidden="true" />
+        {unreadCount > 0 && (
+          <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-400 ring-2 ring-white" />
+        )}
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-100 py-1 z-50">
+          <div className="px-4 py-2 border-b border-gray-100 flex justify-between items-center">
+            <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
+            {unreadCount > 0 && (
+              <button 
+                onClick={() => { onMarkAllAsRead(); setIsOpen(false); }}
+                className="text-xs text-blue-600 hover:text-blue-800"
+              >
+                Mark all as read
+              </button>
+            )}
+          </div>
+          <div className="max-h-96 overflow-y-auto">
+            {notifications.length === 0 ? (
+              <div className="px-4 py-6 text-sm text-center text-gray-500">
+                No new notifications
+              </div>
+            ) : (
+              notifications.map((notification) => (
+                <div 
+                  key={notification.id}
+                  onClick={() => handleNotificationClick(notification)}
+                  className={`px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${!notification.is_read ? 'bg-blue-50/50' : ''}`}
+                >
+                  <div className="flex justify-between items-start">
+                    <p className={`text-sm ${!notification.is_read ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>
+                      {notification.message}
+                    </p>
+                    {!notification.is_read && (
+                      <span className="h-2 w-2 mt-1.5 ml-2 bg-blue-600 rounded-full flex-shrink-0"></span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {new Date(notification.created_at).toLocaleString()}
+                  </p>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -289,6 +372,7 @@ function MainApp({ currentUser, token, onLogout, onUserUpdate }) {
   const [users, setUsers] = useState([]);
   const [organizations, setOrganizations] = useState([]);
   const [stats, setStats] = useState({});
+  const [notifications, setNotifications] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [filters, setFilters] = useState({ status: '', priority: '', category: '' });
   const [showPasswordReset, setShowPasswordReset] = useState(currentUser?.require_password_change || false);
@@ -354,6 +438,45 @@ function MainApp({ currentUser, token, onLogout, onUserUpdate }) {
     }
   };
 
+  const fetchNotifications = async () => {
+    try {
+      const response = await apiCall(`${API_URL}/notifications`);
+      if (response.ok) {
+        const data = await response.json();
+        setNotifications(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    }
+  };
+
+  const markNotificationAsRead = async (id) => {
+    try {
+      const response = await apiCall(`${API_URL}/notifications/${id}/read`, { method: 'PUT' });
+      if (response.ok) {
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+      }
+    } catch (error) {
+      console.error('Error marking notification read:', error);
+    }
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    try {
+      const response = await apiCall(`${API_URL}/notifications/read-all`, { method: 'PUT' });
+      if (response.ok) {
+        setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      }
+    } catch (error) {
+      console.error('Error marking all notifications read:', error);
+    }
+  };
+
+  const handleViewTicketFromNotification = async (ticketId) => {
+    await fetchTicketDetails(ticketId);
+    setView('tickets');
+  };
+
   // Idle Session Timeout (15 minutes = 900,000 ms)
   useEffect(() => {
     let timeoutId;
@@ -387,6 +510,14 @@ function MainApp({ currentUser, token, onLogout, onUserUpdate }) {
     fetchTickets();
     fetchStats();
     fetchOrganizations();
+    fetchNotifications();
+
+    // Poll for notifications every 30 seconds
+    const interval = setInterval(() => {
+      fetchNotifications();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -564,6 +695,15 @@ function MainApp({ currentUser, token, onLogout, onUserUpdate }) {
                 <Plus className="w-4 h-4 mr-2" />
                 New Ticket
               </button>
+
+              <div className="h-8 border-l border-gray-200 mx-2"></div>
+
+              <NotificationBell 
+                notifications={notifications}
+                onMarkAsRead={markNotificationAsRead}
+                onMarkAllAsRead={markAllNotificationsAsRead}
+                onViewTicket={handleViewTicketFromNotification}
+              />
 
               <div className="h-8 border-l border-gray-200 mx-2"></div>
 
